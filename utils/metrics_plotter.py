@@ -30,6 +30,14 @@ class MetricsPlotter:
             'train_acc': {'value': 0, 'epoch': 0},
             'val_acc': {'value': 0, 'epoch': 0}
         }
+        
+        # 添加新的性能指标
+        self.performance_metrics = {
+            'model_size': 0,  # 模型参数量
+            'inference_time': 0,  # 平均推理时间
+            'peak_memory': 0,  # 峰值内存占用
+            'training_time': 0  # 总训练时间
+        }
     
     def update(self, train_loss, val_loss, train_acc, val_acc):
         """更新指标"""
@@ -54,6 +62,17 @@ class MetricsPlotter:
             else:
                 if value > self.best_metrics[metric_name]['value']:
                     self.best_metrics[metric_name] = {'value': value, 'epoch': current_epoch-1}
+    
+    def update_performance_metrics(self, model):
+        # 计算模型大小
+        param_size = 0
+        for param in model.parameters():
+            param_size += param.nelement() * param.element_size()
+        buffer_size = 0
+        for buffer in model.buffers():
+            buffer_size += buffer.nelement() * buffer.element_size()
+            
+        self.performance_metrics['model_size'] = (param_size + buffer_size) / 1024**2  # 转换为MB
     
     def save_config(self, config_dict):
         """保存配置文件"""
@@ -114,4 +133,15 @@ class MetricsPlotter:
         
         plt.tight_layout()
         plt.savefig(self.save_dir / 'training_curves.png', dpi=300, bbox_inches='tight')
-        plt.close() 
+        plt.close()
+    
+    def save_performance_report(self):
+        report = {
+            'model_config': self.config_dict['model_config'],
+            'performance_metrics': self.performance_metrics,
+            'best_metrics': self.best_metrics
+        }
+        
+        report_path = self.save_dir / 'performance_report.json'
+        with open(report_path, 'w') as f:
+            json.dump(report, f, indent=4) 

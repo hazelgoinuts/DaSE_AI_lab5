@@ -1,4 +1,5 @@
 import torch
+import argparse
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
@@ -8,13 +9,73 @@ from tqdm import tqdm
 import config
 from utils.metrics_plotter import MetricsPlotter
 
+
+# 添加命令行参数
+parser = argparse.ArgumentParser(description='多模态情感分析训练脚本')
+
+# 融合策略相关参数
+parser.add_argument('--fusion_type', type=str, default='concat',
+                   choices=['concat', 'attention'],
+                   help='选择融合策略类型: concat(简单拼接) 或 attention(注意力机制)')
+parser.add_argument('--attention_heads', type=int, default=4,
+                   help='注意力机制的head数量(仅在fusion_type=attention时有效)')
+parser.add_argument('--fusion_dropout', type=float, default=0.5,
+                   help='融合层的dropout率')
+
+# 其他训练参数
+parser.add_argument('--batch_size', type=int, default=32,
+                   help='批次大小')
+parser.add_argument('--learning_rate', type=float, default=1e-5,
+                   help='学习率')
+parser.add_argument('--epochs', type=int, default=10,
+                   help='训练轮数')
+parser.add_argument('--weight_decay', type=float, default=1e-3,
+                   help='权重衰减')
+parser.add_argument('--val_ratio', type=float, default=0.3,
+                   help='验证集比例')
+parser.add_argument('--early_stopping_patience', type=int, default=5,
+                   help='早停耐心值')
+
+# 在现有的参数基础上添加backbone选择
+parser.add_argument('--image_backbone', type=str, default='resnet50',
+                   choices=['resnet50', 'resnet18', 'efficientnet-b0'],
+                   help='选择图像特征提取器的backbone')
+parser.add_argument('--text_backbone', type=str, default='bert',
+                   choices=['bert', 'distilbert'],
+                   help='选择文本特征提取器的backbone')
+
+args = parser.parse_args()
+
+# 更新config中的参数
+config.BATCH_SIZE = args.batch_size
+config.LEARNING_RATE = args.learning_rate
+config.EPOCHS = args.epochs
+config.WEIGHT_DECAY = args.weight_decay
+config.VAL_RATIO = args.val_ratio
+config.EARLY_STOPPING_PATIENCE = args.early_stopping_patience
+
 # 准备数据
-train_dataset, val_dataset = prepare_data(config.TRAIN_FILE, config.TEST_FILE)
+train_dataset, val_dataset = prepare_data(
+    config.TRAIN_FILE, 
+    config.TEST_FILE,
+    text_backbone=args.text_backbone  # 传递text_backbone参数
+)
 train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
 
 # 创建模型
-model = MultimodalModel().to(config.DEVICE)
+fusion_params = {
+    'attention_heads': args.attention_heads,
+    'fusion_dropout': args.fusion_dropout
+}
+
+model = MultimodalModel(
+    fusion_type=args.fusion_type,
+    fusion_params=fusion_params,
+    image_backbone=args.image_backbone,
+    text_backbone=args.text_backbone
+).to(config.DEVICE)
+
 
 # 编译模型
 optimizer = AdamW(model.parameters(), lr=config.LEARNING_RATE, weight_decay=config.WEIGHT_DECAY)
@@ -23,19 +84,21 @@ criterion = nn.CrossEntropyLoss()
 # 在训练开始前，准备配置字典
 config_dict = {
     'model_config': {
-        'text_feature_dim': 256,    # bert输出特征降维后的维度，于models/feature_extractors.py中定义
-        'image_feature_dim': 256,   # resnet输出特征降维后的维度，于models/feature_extractors.py中定义
-        'fusion_hidden_dim': 256,   # 融合网络隐藏层维度，于models/multimodal_model.py中定义
-        'num_classes': 3,          # 分类类别数
-        'dropout_rate': 0.5         # dropout率
+        'text_feature_dim': 256,
+        'image_feature_dim': 256,
+        'fusion_type': args.fusion_type,
+        'fusion_params': fusion_params,
+        'image_backbone': args.image_backbone,
+        'text_backbone': args.text_backbone,
+        'num_classes': 3,
     },
     'training_config': {
-        'batch_size': config.BATCH_SIZE,
-        'learning_rate': config.LEARNING_RATE,
-        'epochs': config.EPOCHS,
-        'weight_decay': config.WEIGHT_DECAY,    # L2正则化系数
-        'val_ratio': config.VAL_RATIO,
-        'early_stopping_patience': config.EARLY_STOPPING_PATIENCE
+        'batch_size': args.batch_size,
+        'learning_rate': args.learning_rate,
+        'epochs': args.epochs,
+        'weight_decay': args.weight_decay,
+        'val_ratio': args.val_ratio,
+        'early_stopping_patience': args.early_stopping_patience
     },
     'data_config': {
         'max_text_length': 128,
@@ -54,13 +117,17 @@ config_dict = {
 }
 
 # 初始化绘图器
-plotter = MetricsPlotter('results')
+plotter = MetricsPlotter('output')
 # 保存初始配置
 plotter.save_config(config_dict)
 
 # 训练模型
 best_val_loss = float('inf')
 patience_counter = 0
+
+print(f"使用的图像backbone: {args.image_backbone}")
+print(f"使用的文本backbone: {args.text_backbone}")
+print(f"使用的融合策略: {args.fusion_type}")
 
 for epoch in range(config.EPOCHS):
     model.train()

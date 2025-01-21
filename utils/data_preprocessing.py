@@ -17,9 +17,12 @@ class MultimodalDataset(Dataset):
         self.max_len = max_len
         self.transform = transform if transform else transforms.Compose([
             transforms.Resize((224, 224)),
+
+            # 以下为数据增强部分，若不需要则注释
             transforms.RandomHorizontalFlip(),  # 随机水平翻转
             transforms.RandomRotation(15),      # 随机旋转
             transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),  # 颜色抖动
+            
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
@@ -65,7 +68,7 @@ def load_data(text_path):
                 texts[file_id] = ""
     return texts
 
-def prepare_data(train_file, test_file):
+def prepare_data(train_file, test_file, text_backbone='bert'):
     # 加载所有数据
     texts = load_data(config.DATA_PATH)
     
@@ -91,8 +94,14 @@ def prepare_data(train_file, test_file):
         random_state=config.SEED
     )
     
-    # 初始化tokenizer
-    tokenizer = BertTokenizer.from_pretrained('./bert-base-uncased')
+    # 根据backbone类型初始化tokenizer
+    if text_backbone == 'bert':
+        tokenizer = BertTokenizer.from_pretrained('./bert-base-uncased')
+    elif text_backbone == 'distilbert':
+        from transformers import DistilBertTokenizer
+        tokenizer = DistilBertTokenizer.from_pretrained('./distilbert-base-uncased')
+    else:
+        raise ValueError(f"不支持的text_backbone类型: {text_backbone}")
     
     # 创建数据集
     train_dataset = MultimodalDataset(
