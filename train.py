@@ -4,10 +4,14 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from models.multimodal_model import MultimodalModel
-from utils.data_preprocessing import prepare_data
+from utils.data_preprocessing import prepare_data, MultimodalDataset, load_data
 from tqdm import tqdm
 import config
 from utils.metrics_plotter import MetricsPlotter
+import os
+import pandas as pd
+from transformers import BertTokenizer, DistilBertTokenizer, RobertaTokenizer
+from torchvision import transforms
 
 
 # 添加命令行参数
@@ -41,10 +45,14 @@ parser.add_argument('--image_backbone', type=str, default='resnet50',
                    choices=['resnet50', 'resnet18', 'vit'],
                    help='选择图像特征提取器的backbone')
 parser.add_argument('--text_backbone', type=str, default='bert',
-                   choices=['bert', 'distilbert'],
+                   choices=['bert', 'distilbert', 'roberta'],
                    help='选择文本特征提取器的backbone')
 parser.add_argument('--vit_model_name', type=str, default='vit_base_patch16_224',
                    help='ViT模型名称 (仅在image_backbone=vit时有效)')
+
+# 添加预测输出文件参数
+parser.add_argument('--output_file', type=str, default='predictions.txt',
+                   help='预测结果输出文件路径')
 
 args = parser.parse_args()
 
@@ -60,7 +68,7 @@ config.EARLY_STOPPING_PATIENCE = args.early_stopping_patience
 train_dataset, val_dataset = prepare_data(
     config.TRAIN_FILE, 
     config.TEST_FILE,
-    text_backbone=args.text_backbone  # 传递text_backbone参数
+    text_backbone=args.text_backbone
 )
 train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
@@ -126,6 +134,7 @@ plotter.save_config(config_dict)
 # 训练模型
 best_val_loss = float('inf')
 patience_counter = 0
+best_model_state = None
 
 print(f"使用的图像backbone: {args.image_backbone}")
 print(f"使用的文本backbone: {args.text_backbone}")
@@ -212,8 +221,8 @@ for epoch in range(config.EPOCHS):
     if val_loss < best_val_loss:
         best_val_loss = val_loss
         patience_counter = 0
-        print(f'✓ New best validation loss! Saving model...')
-        torch.save(model.state_dict(), f"{config.MODEL_SAVE_PATH}/best_model.pth")
+        print(f'✓ New best validation loss! Saving model state...')
+        best_model_state = model.state_dict().copy()
     else:
         patience_counter += 1
         print(f'✗ No improvement in validation loss. Patience: {patience_counter}/{config.EARLY_STOPPING_PATIENCE}')
@@ -225,3 +234,70 @@ for epoch in range(config.EPOCHS):
 # 在训练结束后，更新并保存最终配置
 config_dict['best_metrics'] = plotter.best_metrics
 plotter.save_config(config_dict)
+
+# 预测部分
+print("\n开始进行预测...")
+
+# 加载最佳模型状态
+model.load_state_dict(best_model_state)
+
+# 准备测试数据
+test_df = pd.read_csv(config.TEST_FILE)
+texts = load_data(config.DATA_PATH)
+
+test_texts = []
+test_image_paths = []
+for guid in test_df['guid']:
+    test_texts.append(texts[str(guid)])
+    test_image_paths.append(os.path.join(config.DATA_PATH, f"{guid}.jpg"))
+
+# 选择对应的tokenizer
+if args.text_backbone == 'bert':
+    tokenizer = BertTokenizer.from_pretrained('./bert-base-uncased')
+elif args.text_backbone == 'distilbert':
+    tokenizer = DistilBertTokenizer.from_pretrained('./distilbert-base-uncased')
+elif args.text_backbone == 'roberta':
+    tokenizer = RobertaTokenizer.from_pretrained('./roberta-base')
+
+# 创建测试数据集
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
+
+test_dataset = MultimodalDataset(
+    test_texts,
+    test_image_paths,
+    [0] * len(test_texts),  # 占位标签
+    tokenizer,
+    transform=transform
+)
+
+test_loader = DataLoader(test_dataset, batch_size=config.BATCH_SIZE, shuffle=False)
+
+# 进行预测
+model.eval()
+predictions = []
+
+print("正在生成预测结果...")
+with torch.no_grad():
+    for batch in tqdm(test_loader, desc="预测进度"):
+        input_ids = batch['input_ids'].to(config.DEVICE)
+        attention_mask = batch['attention_mask'].to(config.DEVICE)
+        images = batch['image'].to(config.DEVICE)
+        
+        outputs = model(input_ids, attention_mask, images)
+        _, predicted = torch.max(outputs, 1)
+        predictions.extend(predicted.cpu().numpy())
+
+# 保存预测结果
+print(f"保存预测结果到: {args.output_file}")
+label_map = {0: 'positive', 1: 'neutral', 2: 'negative'}
+
+with open(args.output_file, 'w') as f:
+    f.write('guid,tag\n')  # 写入表头
+    for guid, pred in zip(test_df['guid'], predictions):
+        f.write(f'{guid},{label_map[pred]}\n')
+
+print("预测完成！")
