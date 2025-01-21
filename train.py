@@ -38,11 +38,13 @@ parser.add_argument('--early_stopping_patience', type=int, default=5,
 
 # 在现有的参数基础上添加backbone选择
 parser.add_argument('--image_backbone', type=str, default='resnet50',
-                   choices=['resnet50', 'resnet18', 'efficientnet-b0'],
+                   choices=['resnet50', 'resnet18', 'vit'],
                    help='选择图像特征提取器的backbone')
 parser.add_argument('--text_backbone', type=str, default='bert',
                    choices=['bert', 'distilbert'],
                    help='选择文本特征提取器的backbone')
+parser.add_argument('--vit_model_name', type=str, default='vit_base_patch16_224',
+                   help='ViT模型名称 (仅在image_backbone=vit时有效)')
 
 args = parser.parse_args()
 

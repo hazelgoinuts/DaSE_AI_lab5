@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 from PIL import Image
 import torch
 import numpy as np
-from transformers import BertTokenizer
+from transformers import BertTokenizer, RobertaTokenizer
 from torchvision import transforms
 import config
 
@@ -17,7 +17,6 @@ class MultimodalDataset(Dataset):
         self.max_len = max_len
         self.transform = transform if transform else transforms.Compose([
             transforms.Resize((224, 224)),
-
             # 以下为数据增强部分，若不需要则注释
             transforms.RandomHorizontalFlip(),  # 随机水平翻转
             transforms.RandomRotation(15),      # 随机旋转
@@ -100,6 +99,8 @@ def prepare_data(train_file, test_file, text_backbone='bert'):
     elif text_backbone == 'distilbert':
         from transformers import DistilBertTokenizer
         tokenizer = DistilBertTokenizer.from_pretrained('./distilbert-base-uncased')
+    elif text_backbone == 'roberta':
+        tokenizer = RobertaTokenizer.from_pretrained('./roberta-base')
     else:
         raise ValueError(f"不支持的text_backbone类型: {text_backbone}")
     
