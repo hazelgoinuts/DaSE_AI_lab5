@@ -37,15 +37,44 @@ pip install -r requirements.txt
 ```
 
 4. 下载预训练模型
-```bash
-# 下载BERT模型
-wget https://huggingface.co/bert-base-uncased/resolve/main/pytorch_model.bin -P ./bert-base-uncased/
-wget https://huggingface.co/bert-base-uncased/resolve/main/config.json -P ./bert-base-uncased/
-wget https://huggingface.co/bert-base-uncased/resolve/main/vocab.txt -P ./bert-base-uncased/
 
-# 下载ViT模型
-wget https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vitjx/jx_vit_base_p16_224-80ecf9dd.pth -P ./timm_models/
+项目提供了多个下载脚本，位于 `download` 文件夹下：
+
+### 方式一：使用 BERT
+```bash
+python download/download.py
 ```
+这将下载 BERT-base-uncased 模型到 `./models/bert-base-uncased/` 目录。
+
+### 方式二：使用 DistilBERT
+```bash
+python download/download2.py --model_name distilbert-base-uncased --save_dir pretrained_models
+```
+可以通过参数指定模型名称和保存目录。
+
+### 方式三：使用 ViT
+```bash
+python download/download3.py
+```
+这将下载以下 ViT 模型到 `./timm_models/` 目录：
+- vit_base_patch16_224
+- vit_small_patch16_224
+- vit_large_patch16_224
+
+### 方式四：使用 RoBERTa
+```bash
+python download/download4.py
+```
+这将下载 RoBERTa-base 模型到 `./models/roberta-base/` 目录。
+
+注意事项：
+- 如果下载速度较慢，可以通过设置代理加速：
+```bash
+export http_proxy="http://your-proxy:port"
+export https_proxy="http://your-proxy:port"
+```
+- 对于 RoBERTa 模型，默认使用镜像站点 https://hf-mirror.com
+- 如果遇到下载问题，可以尝试清理缓存：`rm -rf ~/.cache/huggingface`
 
 ## 项目结构
 ```
