@@ -1,95 +1,135 @@
-# 多模态情感分析任务
+# Multimodal Sentiment Analysis
 
-本项目实现了一个多模态情感分析模型，可以同时处理文本和图像数据，对社交媒体内容进行情感分类（积极、中性、消极）。
+基于多模态融合的情感分析系统，支持文本和图像的联合分析。该项目实现了一个灵活的多模态情感分析框架，支持多种backbone和融合策略的切换，可用于处理包含文本和图像的情感分析任务。
+
+## 特点
+
+- 支持多种图像backbone（ResNet18/ResNet50/ViT）
+- 支持多种文本backbone（BERT/DistilBERT/RoBERTa）
+- 提供多种融合策略（Concat/Attention）
+- 完整的训练和推理流程
+- 详细的训练过程可视化
+- 灵活的命令行参数配置
 
 ## 环境要求
 
-- Python 3.7+
-- CUDA 11.0+ (如果使用GPU)
+- Python 3.8+
+- PyTorch 1.8+
+- CUDA 11.0+ (GPU版本)
 
-## 安装
+## 安装说明
 
-1. 安装依赖：
+1. 克隆项目
+```bash
+git clone https://github.com/yourusername/multimodal-sentiment-analysis.git
+cd multimodal-sentiment-analysis
+```
+
+2. 创建虚拟环境
+```bash
+conda create -n multimodal python=3.8
+conda activate multimodal
+```
+
+3. 安装依赖
 ```bash
 pip install -r requirements.txt
 ```
 
-## 数据准备
-
-将数据集按以下结构放置：
-```
-data/
-├── images/
-│   ├── [guid1].jpg
-│   ├── [guid2].jpg
-│   └── ...
-├── train.csv
-└── test.csv
-```
-
-## 模型训练
-
-### 基础训练命令
-
+4. 下载预训练模型
 ```bash
-python train.py --modality multimodal --text_backbone bert --image_backbone resnet50 --fusion_type concat
-```
+# 下载BERT模型
+wget https://huggingface.co/bert-base-uncased/resolve/main/pytorch_model.bin -P ./bert-base-uncased/
+wget https://huggingface.co/bert-base-uncased/resolve/main/config.json -P ./bert-base-uncased/
+wget https://huggingface.co/bert-base-uncased/resolve/main/vocab.txt -P ./bert-base-uncased/
 
-### 参数说明
-
-- `--modality`: 选择输入模态 ['text', 'image', 'multimodal']
-- `--text_backbone`: 文本特征提取器 ['bert', 'distilbert', 'roberta']
-- `--image_backbone`: 图像特征提取器 ['resnet50', 'resnet18', 'vit']
-- `--fusion_type`: 特征融合方式 ['concat', 'attention']
-
-### 消融实验
-
-运行单模态实验：
-
-```bash
-# 仅文本
-python train.py --modality text --text_backbone bert
-
-# 仅图像
-python train.py --modality image --image_backbone resnet50
+# 下载ViT模型
+wget https://github.com/rwightman/pytorch-image-models/releases/download/v0.1-vitjx/jx_vit_base_p16_224-80ecf9dd.pth -P ./timm_models/
 ```
 
 ## 项目结构
-
 ```
-.
-├── models/
-│   ├── feature_extractors.py  # 特征提取器实现
-│   └── multimodal_model.py    # 多模态模型实现
-├── utils/
-│   └── data_preprocessing.py  # 数据预处理
-├── train.py                   # 训练脚本
-├── requirements.txt           # 依赖包列表
-└── README.md                  # 说明文档
+multimodal-sentiment-analysis/
+├── models/                    # 模型相关代码
+│   ├── feature_extractors.py  # 特征提取器
+│   ├── multimodal_model.py   # 多模态模型
+│   └── fusion/              # 融合策略
+│       ├── concat.py        # 拼接融合
+│       └── attention.py     # 注意力融合
+├── utils/                    # 工具函数
+│   ├── data_preprocessing.py # 数据预处理
+│   └── metrics_plotter.py   # 指标绘制
+├── config.py                 # 配置文件
+├── train.py                 # 训练脚本
+└── requirements.txt         # 依赖库
 ```
 
-## 注意事项
+## 数据准备
 
-1. 首次运行时会自动下载预训练模型，请确保网络连接正常
-2. 建议使用GPU进行训练，可以显著提升训练速度
-3. 如果显存不足，可以尝试减小batch_size
-4. 对于不同的backbone，建议使用不同的学习率
+1. 准备数据集
+```
+lab5_data/
+├── data/           # 包含所有文本和图像文件
+├── train.txt      # 训练数据标注
+└── test_without_label.txt  # 测试数据
+```
 
-## 结果
+2. 数据格式
+- train.txt 格式：
+```
+guid,tag
+1,positive
+2,neutral
+3,negative
+```
 
-模型在验证集上的表现：
+## 使用说明
 
-- 多模态：[待填写]
-- 仅文本：[待填写]
-- 仅图像：[待填写]
+### 训练模型
 
-## 引用
+基本训练命令：
+```bash
+python train.py \
+    --fusion_type concat \
+    --image_backbone resnet50 \
+    --text_backbone bert \
+    --batch_size 32 \
+    --learning_rate 1e-5
+```
 
+### 主要参数说明
 
-这两个文件涵盖了：
-1. 所有必要的依赖包及其版本要求
-2. 详细的项目说明，包括安装、运行和参数配置
-3. 完整的项目结构说明
-4. 注意事项和使用建议
+| 参数 | 说明 | 默认值 | 可选值 |
+|------|------|--------|--------|
+| fusion_type | 融合策略 | concat | concat/attention |
+| image_backbone | 图像特征提取器 | resnet50 | resnet50/resnet18/vit |
+| text_backbone | 文本特征提取器 | bert | bert/distilbert/roberta |
+| batch_size | 批次大小 | 32 | - |
+| learning_rate | 学习率 | 1e-5 | - |
+| epochs | 训练轮数 | 10 | - |
+| output_file | 预测结果保存路径 | predictions.txt | - |
 
-可以根据实际情况修改其中的占位符（如[待填写]部分）和具体的性能数据。
+### 训练结果
+
+训练过程中会自动生成：
+- 训练损失和准确率曲线
+- 最佳模型保存
+- 预测结果文件
+
+预测结果格式：
+```
+guid,tag
+1,positive
+2,neutral
+3,negative
+```
+
+## 实验结果
+
+1. 模型性能
+- 验证集准确率：xx%
+- 测试集准确率：xx%
+
+2. 可视化示例
+- 训练过程曲线
+- 注意力可视化
